@@ -500,22 +500,7 @@ function descargarPDF(){
   const cliente = document.getElementById("cliente").value || "cliente";
   const nombreArchivo = "Cotizacion_" + cliente.replace(/[^a-zA-Z0-9]/g,"_") + ".pdf";
   const hoja = document.getElementById("hoja");
-
-  const esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  let ventanaMovil = null;
-  if (esMovil) {
-    // Importante: esta ventana se abre AQUÍ MISMO, en el instante del clic,
-    // porque el PDF tarda unos segundos en generarse. Si se abriera después
-    // (cuando el PDF ya está listo), el navegador la trata como un pop-up no
-    // solicitado y la bloquea. Al abrirla ya, y luego solo cambiarle la
-    // dirección, no hay bloqueo.
-    ventanaMovil = window.open("", "_blank");
-    if (ventanaMovil) {
-      ventanaMovil.document.write(
-        '<div style="font-family:sans-serif;padding:24px;color:#444;">Generando tu PDF, un momento...</div>'
-      );
-    }
-  }
+  const esIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) && !window.MSStream;
 
   const opciones = {
     margin: 0,
@@ -554,15 +539,16 @@ function descargarPDF(){
     // nombre equivocado la promesa fallaba en silencio y el botón no hacía nada.
     return html2pdf().set(opciones).from(hoja).outputPdf('bloburi');
   }).then((urlBlob) => {
-    if (esMovil) {
-      if (ventanaMovil) {
-        ventanaMovil.location.href = urlBlob;
-      } else {
-        // El navegador bloqueó la ventana incluso abriéndola al inicio
-        // (poco común). Como último recurso, se intenta abrir directo.
-        window.open(urlBlob, "_blank");
-      }
+    if (esIOS) {
+      // En Safari de iPhone/iPad un blob (archivo temporal en memoria) creado
+      // en esta página SOLO es válido dentro de esta misma pestaña; si se
+      // intenta abrir en una pestaña nueva, Safari lo bloquea silenciosamente
+      // y se queda cargando para siempre. Por eso aquí navegamos la MISMA
+      // pestaña hacia el PDF (el botón "atrás" del navegador regresa al
+      // formulario). Desde ahí se puede guardar con el ícono de compartir.
+      window.location.href = urlBlob;
     } else {
+      // Android y computador sí soportan la descarga automática normal.
       const a = document.createElement("a");
       a.href = urlBlob;
       a.download = nombreArchivo;
@@ -572,7 +558,6 @@ function descargarPDF(){
     }
   }).catch((error) => {
     console.error("Error generando el PDF:", error);
-    if (ventanaMovil) { ventanaMovil.close(); }
     alert("Hubo un problema generando el PDF. Por favor intenta de nuevo.");
   }).finally(() => {
     if (btn) { btn.disabled = false; btn.textContent = textoOriginal; }
