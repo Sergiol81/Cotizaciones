@@ -186,10 +186,10 @@
     font-size:12.5px;
   }
   table.cot th{
-    background:var(--texto);
+    background:var(--azul);
     color:#fff;
     padding:7px 6px;
-    border:1px solid var(--texto);
+    border:1px solid var(--azul);
     text-align:center;
   }
   table.cot td{
@@ -501,6 +501,22 @@ function descargarPDF(){
   const nombreArchivo = "Cotizacion_" + cliente.replace(/[^a-zA-Z0-9]/g,"_") + ".pdf";
   const hoja = document.getElementById("hoja");
 
+  const esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  let ventanaMovil = null;
+  if (esMovil) {
+    // Importante: esta ventana se abre AQUÍ MISMO, en el instante del clic,
+    // porque el PDF tarda unos segundos en generarse. Si se abriera después
+    // (cuando el PDF ya está listo), el navegador la trata como un pop-up no
+    // solicitado y la bloquea. Al abrirla ya, y luego solo cambiarle la
+    // dirección, no hay bloqueo.
+    ventanaMovil = window.open("", "_blank");
+    if (ventanaMovil) {
+      ventanaMovil.document.write(
+        '<div style="font-family:sans-serif;padding:24px;color:#444;">Generando tu PDF, un momento...</div>'
+      );
+    }
+  }
+
   const opciones = {
     margin: 0,
     filename: nombreArchivo,
@@ -534,14 +550,18 @@ function descargarPDF(){
   esperarImagenes(hoja).then(() => {
     return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   }).then(() => {
-    return html2pdf().set(opciones).from(hoja).outputPdf('bloburl');
+    // "bloburi" (no "bloburl") es el nombre correcto que espera jsPDF; con el
+    // nombre equivocado la promesa fallaba en silencio y el botón no hacía nada.
+    return html2pdf().set(opciones).from(hoja).outputPdf('bloburi');
   }).then((urlBlob) => {
-    const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    if (esIOS) {
-      // Safari de iPhone/iPad no soporta la descarga automática de archivos:
-      // en vez de eso abrimos el PDF en una pestaña nueva, donde el usuario
-      // puede tocar el botón de compartir para guardarlo en Archivos.
-      window.open(urlBlob, "_blank");
+    if (esMovil) {
+      if (ventanaMovil) {
+        ventanaMovil.location.href = urlBlob;
+      } else {
+        // El navegador bloqueó la ventana incluso abriéndola al inicio
+        // (poco común). Como último recurso, se intenta abrir directo.
+        window.open(urlBlob, "_blank");
+      }
     } else {
       const a = document.createElement("a");
       a.href = urlBlob;
@@ -550,6 +570,10 @@ function descargarPDF(){
       a.click();
       a.remove();
     }
+  }).catch((error) => {
+    console.error("Error generando el PDF:", error);
+    if (ventanaMovil) { ventanaMovil.close(); }
+    alert("Hubo un problema generando el PDF. Por favor intenta de nuevo.");
   }).finally(() => {
     if (btn) { btn.disabled = false; btn.textContent = textoOriginal; }
   });
